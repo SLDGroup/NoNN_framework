@@ -1,0 +1,4 @@
+matplotlib
+networkx
+python-louvain
+tqdm
