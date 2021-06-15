@@ -6,6 +6,17 @@ from collections import OrderedDict
 
 class ActivationNetwork():
     def __init__(self, num_classes=10, num_students=2, top_k_creation=50, percentile_value=99, c_final_conv=256):
+        """
+        Constructor for the activation network.
+        Params
+        ------
+        - num_classes: total number of classes
+        - num_students: total number of students
+        - top_k_creation: number of top filters to look at
+        - percentile_value: # TODO: forgot what this is
+        - c_final_conv: final convolution constant
+        """
+
         self.interm_out_gr = None
         self.preds = None
         self.labels = None
@@ -14,45 +25,74 @@ class ActivationNetwork():
         self.num_students = num_students
         self.percentile_value = percentile_value
         self.num_classes = num_classes
-        self.top_k_creation = top_k_creation  # Number of top filters to look at in terms of activation
+
+        # Number of top filters to look at in terms of activation
+        self.top_k_creation = top_k_creation
+
         self.avg_actv = True
         self.c_final_conv = c_final_conv
-        self.filter_net = np.zeros([self.c_final_conv, self.c_final_conv])  # Filter to filter network
-        self.f2p_net = np.zeros([self.c_final_conv, num_classes])  # Filter to prediction network
-        self.f2c_net = np.zeros([self.c_final_conv, num_classes])  # Filter to class network
+
+        # Filter to filter network
+        self.filter_net = np.zeros([self.c_final_conv, self.c_final_conv])
+
+        # Filter to prediction network
+        self.f2p_net = np.zeros([self.c_final_conv, num_classes])
+
+        # Filter to class network
+        self.f2c_net = np.zeros([self.c_final_conv, num_classes])
+
         # Filter to prediction network without self.top_k_creation
         self.f2p_net_g2All = np.zeros([self.c_final_conv, num_classes])
+
         # Filter to class network without self.top_k_creation
         self.f2c_net_g2All = np.zeros([self.c_final_conv, num_classes])
         self.comm_size_thresh = 1
 
     def partition_activation_network(self, filename, filename_cluster):
-        self.load_activation_network(filename)
-        self.filter_net /= self.filter_net.max()
-        f2fAllLinks = np.asarray(self.filter_net).reshape(-1)
-        f2fnonzero = f2fAllLinks[f2fAllLinks != 0]
-        percentile_value = self.percentile_value
-        self.filter_net_thres = np.percentile(f2fnonzero, percentile_value)
-        origF2F = np.zeros_like(self.filter_net)
+
+        """
+        Function for partitioning the activation network."
+
+        Params
+        ------
+        - filename: file with the activation network
+        - filename_cluster: file for storing clusters/partitions
+        """
+
+        self.load_activation_network(filename)                                  # get activation network
+        self.filter_net /= self.filter_net.max()                                # divide filter_net by its max
+        f2fAllLinks = np.asarray(self.filter_net).reshape(-1)                   # convert filter_net to array and reshape(-1)
+        f2fnonzero = f2fAllLinks[f2fAllLinks != 0]                              # create an array of non zero values from f2fAllLinks (above array)
+        percentile_value = self.percentile_value                                # assign percentile value
+        self.filter_net_thres = np.percentile(f2fnonzero, percentile_value)     # get the threshold at the given percentile_value
+        origF2F = np.zeros_like(self.filter_net)                                # make a filter of zeros matching filter_net dimensions
+
         # This way, the values are copied into a new variable and the memory isn't shared
-        origF2F[:] = self.filter_net[:]
-        self.filter_net[self.filter_net < self.filter_net_thres] = 0
-        self.filter_network = nx.from_numpy_matrix(self.filter_net)  # This is an undirected graph
+        origF2F[:] = self.filter_net[:]                                         # copy filter.net to origF2F
+        self.filter_net[self.filter_net < self.filter_net_thres] = 0            # put zeros in filter_net where values are less than th
+
+        # This is an undirected graph
+        self.filter_network = nx.from_numpy_matrix(self.filter_net)             # return a graph from filter_net matrix
         # Put communities into a dictionary: {comm1 :: nodeIDs :: number_of_nodes}
-        gamma = 0.7  # Gives 4 clusters total for 0.086 filter net threshold (largest community has 181 filters)
-        filter2comm = co.best_partition(self.filter_network, resolution=gamma)
+
+        # Gives 4 clusters total for 0.086 filter net threshold (largest community has 181 filters)
+        gamma = 0.7
+
+        # TODO: comm = community = partition = cluster ; change naming convention
+        filter2comm = co.best_partition(self.filter_network, resolution=gamma)  # partitioning the undirected graph with high modularity
         comm2filter = {}
         comm2num_filters = {}
         for k, v in filter2comm.items():
-            comm2filter[v] = comm2filter.get(v, [])
+            comm2filter[v] = comm2filter.get(v, [])                             # not sure here
             comm2filter[v].append(k)
             comm2num_filters[v] = len(comm2filter[v])
         commNumList = list(comm2num_filters.values())
-        uniqueClusters = np.unique(commNumList)
+        uniqueClusters = np.unique(commNumList)                                 # get only unique elements of an array
         filterClusters = {}
         filterClusterSizes = {}
         k = 0
         for i in uniqueClusters:
+            # If cluster less than or equal to cluster threshold size
             if i <= self.comm_size_thresh:
                 filtersToCluster = []
                 i1 = self.indices(commNumList, lambda x: x <= self.comm_size_thresh)
@@ -60,6 +100,7 @@ class ActivationNetwork():
                     filtersToCluster.extend(comm2filter[j])
                 filterClusters.update({k: filtersToCluster})
                 filterClusterSizes.update({k: len(filtersToCluster)})
+            # If cluster is greater than cluster threshold size
             else:
                 filtersToCluster = []
                 i2 = self.indices(commNumList, lambda x: x == i)
@@ -70,6 +111,7 @@ class ActivationNetwork():
             k += 1
         # print(f"k = {k}")
 
+        # k is size of clusters
         if k-1 < self.num_students:
             print(f"There are not enough partitions to make {self.num_students} students")
             print(f"Max number of students will be {k-1}")
@@ -118,8 +160,15 @@ class ActivationNetwork():
             pickle.dump([filterClusters, filterClusterSizes], f)
 
     def create_activation_network(self, batchSize=128):
+        """
+        Function for creating the activation network."
+
+        Params
+        ------
+        - batchSize: number of images in each batch
+        """
         g2_out = self.interm_out_gr.data.cpu().numpy()
-        yPred = self.preds.data.cpu().numpy()
+        yPred = self.preds.data.cpu().numpy()               # moving data to cpu
         final_conv_layer = g2_out
         true_labels = np.asarray(self.labels.data.cpu())
         model_pred = yPred
@@ -160,6 +209,14 @@ class ActivationNetwork():
             self.f2c_net_g2All[:, true_labels[img_idx]] += filter_activity
 
     def relu(self, x):
+        """
+        Rectified linear activation function that outputs the input if the input is positive
+        and outputs 0 if the input is negative."
+
+        Params
+        ------
+        - x: any value
+        """
         x[x < 0] = 0
         return x
 
@@ -167,9 +224,28 @@ class ActivationNetwork():
         return [i for (i, val) in enumerate(a) if func(val)]
 
     def load_activation_network(self, filename):
+        """
+        Function for retrieving the activation network from a file.
+
+        Params
+        ------
+        - filename: name of the file for retrieving the activation network
+
+        """
         with open(filename, 'rb') as f:
             self.filter_net, self.f2p_net, self.f2c_net, self.f2p_net_gAll, self.f2c_net_gAll = pickle.load(f)
 
     def dump_activation_network(self, filename):
+
+        """
+        Function for storing the activation network into a file.
+
+        Params
+        ------
+        - filename: name of the file for storing the activation network
+
+        """
+
         with open(filename, 'wb') as f:
+            # filter_cluster, filter_cluster_sizes
             pickle.dump([self.filter_net, self.f2p_net, self.f2c_net, self.f2p_net_g2All, self.f2c_net_g2All], f)

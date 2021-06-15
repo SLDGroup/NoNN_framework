@@ -14,6 +14,24 @@ import pickle
 
 class NoNN:
     def __init__(self, config_file=""):
+        """
+        Constructor for the NoNN class.
+
+        Params
+        ------
+        config_file: config file with configs for
+            - dataset
+            - base
+            - teacher
+                - filter activation network
+                - optimizer
+                - scheduler
+            - student
+                - filter activation network
+                - optimizer
+                - scheduler
+
+        """
 
         if config_file == "":
             config_file = "configs/twrn_swrn.config"
@@ -28,6 +46,7 @@ class NoNN:
         self.teacher_configs = configs["teacher"]
         self.student_configs = configs["student"]
 
+        # Get dataset iterators, dataset sizes, and total number of classes
         self.data_loaders, self.dataset_sizes, self.num_classes = \
             dataset.prepare_datasets(data_dir=self.dataset_config["dataset_root"],
                                      train_val_batch_size=self.dataset_config["train_val_batch_size"],
@@ -40,6 +59,19 @@ class NoNN:
 
     def create_teacher(self, model=None, loss=None, optimizer=None, scheduler=None,
                        print_model=False, print_params=False):
+        """
+        Function for creating the teacher for the NoNN.
+
+        Params
+        ------
+        model: teacher model
+        loss: function for measuring how far the prediction is from the true value
+        optimizer: function to optimize the loss function (minimize loss)
+        scheduler: learning rate scheduler for scheduling the learning rate during epochs
+        print_model: whether to print the teacher model
+        print_params: whether to print the teacher network parameters
+
+        """
 
         if model is None:
             self.t_model = Wide_ResNet(depth=16, widen_factor=4, dropout=0, num_classes=10)
@@ -61,6 +93,7 @@ class NoNN:
         else:
             self.t_optimizer = optimizer
 
+        # SGD (stochastic gradient descent)
         if scheduler is None:
             scheduler_configs = self.teacher_configs["lr_scheduler"]
             self.t_exp_lr_scheduler = lr_scheduler.StepLR(optimizer=self.t_optimizer,
@@ -69,6 +102,7 @@ class NoNN:
         else:
             self.t_exp_lr_scheduler = scheduler
 
+        # Get teacher model
         self.teacher = Teacher(teacher_configs=self.teacher_configs,
                                base_configs=self.base_configs,
                                model=self.t_model,
@@ -80,6 +114,19 @@ class NoNN:
                                print_params=print_params)
 
     def create_unified_student(self, model=None):
+
+        """
+        Function for creating a unified student for the NoNN.
+
+        Params
+        ------
+        model: unified student model
+
+        Returns
+        -------
+        -
+        """
+
         num_students = self.base_configs["num_students"]
 
         # Handle Filter Activation Network
@@ -88,10 +135,12 @@ class NoNN:
         path = self.activation_network_path[:-len(filename)]
         self.filename_cluster = "cluster_" + filename
 
+        # Get filter clusters from file
         with open(path+self.filename_cluster, 'rb') as f:
             print(f"Reading filters from {path + self.filename_cluster}")
             self.filter_cluster, self.filter_cluster_sizes, *_ = pickle.load(f)
 
+        # Print filter cluster sizes
         for i in range(num_students):
             print('Student {}: {} Channels'.format(i, self.filter_cluster_sizes[i]))
 
@@ -104,6 +153,7 @@ class NoNN:
             self.split_index = self.student_configs["split_index"]
             self.mode = self.student_configs["mode"]
 
+        # Get unified student model
         self.s_model = UnifiedStudentModel(num_students=num_students,
                                            filter_cluster_sizes=self.filter_cluster_sizes,
                                            num_classes=self.num_classes,
@@ -114,6 +164,15 @@ class NoNN:
         return self.s_model
 
     def create_student(self, optimizer=None, scheduler=None):
+
+        """
+        Function for creating a student for the NoNN.
+
+        Params
+        ------
+        model: unified student model
+
+       """
 
         if self.s_model is None:
             # Handle Filter Activation Network

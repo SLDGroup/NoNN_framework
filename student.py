@@ -21,34 +21,73 @@ class Student:
     def __init__(self, student_configs, base_configs,
                  teacher_model=None, student_model=None, optimizer=None, lr_scheduler=None,
                  dataset=None, filter_cluster=None, print_model=False, print_params=False):
+
+        """
+        Constructor for student network. Loads configurations for the student network.
+        Params
+        ------
+        - student_configs: student configurations
+            - gpu_id: graphics processing unit ID
+            - epochs: total number of epochs
+            - parallel: whether parallel processing is used
+            - resume: whether to resume training on an existing/previously trained model
+            - alpha: factor to control the weight of hard label loss vs soft label loss;
+              factor to weight the student and distillation loss (weight to student loss function
+              and (1 - alpha) to distillation loss function
+            - temperature: temperature for softening probability distributions,
+              making logits smaller and retaining relativeness
+            - beta:
+            - mode: mode of NoNN
+            - log_file: csv log file for teacher model
+            - inference_log_file: csv log file for inference
+        - base_configs: general NoNN configurations
+            - num_students: number of students
+            - activation_network_path: path directory to the filter activation network
+            - teacher_model_path: path directory to the teacher model
+            - num_classes: number of total classes
+        - model: teacher model
+        - loss_function: function to measure how far the prediction is from the true value
+        - optimizer: function to optimize the loss function (minimize loss)
+        - lr_scheduler: learning rate scheduler for scheduling the learning rate during epochs
+        - dataset: training, validation, and testing data set
+        - print_model: whether to print the teacher model
+        - filter_cluster: clusters/partitions
+        - print_params: whether to print the parameters
+        """
+
+        # Load student configs
         self.gpu_id = student_configs["gpu_id"]
         self.epochs = student_configs["epochs"]
         self.parallel = student_configs["parallel"]
         self.resume = student_configs["resume"]
-        self.model_save_name = base_configs["student_model_path"].split('/')[-1]  # twrn404_swrn161.pt7
-        self.model_save_path = base_configs["student_model_path"][:-len(self.model_save_name)]  # models/student/
-        self.student_model_path = base_configs["student_model_path"]  # models/student/twrn404_swrn161.pt7
-        self.teacher_model_path = base_configs["teacher_model_path"]  # models/teacher/wrn_40_4.pt7
-        self.deploy_dir_path = base_configs["deploy_dir_path"]
-        self.deploy_target = base_configs["deploy_target"]
         self.alpha = student_configs["alpha"]
         self.beta = student_configs["beta"]
         self.temperature = student_configs["temperature"]
         self.log_file = student_configs["log_file"]
         self.inference_log_file = student_configs["inference_log_file"]
 
+        # Load base configs
+        self.model_save_name = base_configs["student_model_path"].split('/')[-1]  # twrn404_swrn161.pt7
+        self.model_save_path = base_configs["student_model_path"][:-len(self.model_save_name)]  # models/student/
+        self.student_model_path = base_configs["student_model_path"]  # models/student/twrn404_swrn161.pt7
+        self.teacher_model_path = base_configs["teacher_model_path"]  # models/teacher/wrn_40_4.pt7
+        self.deploy_dir_path = base_configs["deploy_dir_path"]
+        self.deploy_target = base_configs["deploy_target"]
         self.num_students = base_configs["num_students"]
 
         # Handle dataset
         self.data_loaders, self.dataset_sizes, self.num_classes = dataset
 
-        # TEACHER MODEL
+        # TEACHER MODEL -------------------------------------------------------------------------------------
         self.teacher_model = teacher_model
 
+        # Device is gpu if cuda is available and cpu if not
         self.device_teacher = torch.device(f"cuda:{self.gpu_id}" if torch.cuda.is_available() else "cpu")
         if torch.cuda.device_count() > 1 and self.parallel:
             print(f"USING {torch.cuda.device_count()} GPUs!")
             self.teacher_model = nn.DataParallel(self.teacher_model)
+
+        # Get teacher model
         self.teacher_model.load_state_dict(torch.load(self.teacher_model_path))
         self.teacher_model = self.teacher_model.to(self.device_teacher)
         if print_model:
@@ -60,16 +99,18 @@ class Student:
             print('TOTAL NUMBER OF PARAMETERS TEACHER = {}'.format(n_teacher_parameters))
             print('-----------------------------')
 
-        # STUDENT MODEL
+        # STUDENT MODEL ------------------------------------------------------------------------------------
         self.student_model = student_model
         self.student_deploy_model = deepcopy(student_model)
         self.student_deploy_model.mode = "deploy"
 
+        # Device is gpu if cuda is available and cpu if not
         self.device_student = torch.device(f"cuda:{self.gpu_id}" if torch.cuda.is_available() else "cpu")
         if torch.cuda.device_count() > 1 and self.parallel:
             print(f"USING {torch.cuda.device_count()} GPUs!")
             self.student_model = nn.DataParallel(self.student_model)
 
+        # Get student model
         self.student_model = self.student_model.to(self.device_student)
         if print_model:
             print('======== STUDENT INFO =========')
@@ -80,6 +121,7 @@ class Student:
             print('TOTAL NUMBER OF PARAMETERS STUDENT = {}'.format(n_student_parameters))
             print('-----------------------------')
 
+        # If resume is true load current student model
         if self.resume:
             self.student_model.load_state_dict(torch.load(self.student_model_path))
             print(f"Loaded student model from: {self.student_model_path}")
@@ -100,6 +142,22 @@ class Student:
         print("Loaded configs for deployment")
 
     def compile_part(self, model_part, input_data, name="", target='llvm'):
+
+        """
+        Function for compiling model to deploy onto target.
+
+        Params
+        ------
+        - model_part: student model to be traced
+        - input_data: input data into the student model
+        - name: name of student
+        - target: which target the model is being deployed to: llvm, rasp3b, or cuda
+
+        Returns
+        -------
+        - input_name: returns name of compiled module
+        """
+
         scripted_model = jit.trace(model_part, input_data).eval()
 
         tvm_target = None
@@ -118,6 +176,7 @@ class Student:
         with tvm.transform.PassContext(opt_level=3):
             lib = relay.build(mod, target=tvm_target, params=params)
 
+
         path_lib = os.path.join(self.deploy_dir_path, f"lib_{name}.tar")
         if not os.path.exists(self.deploy_dir_path):
             print("Create Deployment Dir")
@@ -127,6 +186,25 @@ class Student:
         return input_name
 
     def compile_and_load(self, name, part, input_data, host=None, port=None, target='llvm'):
+        """
+        Function for compiling and loading to target.
+
+        Params
+        ------
+        - name: name of student
+        - part: student model
+        - input_data: input data into the model
+        - host: ips for deployment
+        - port: ports for deployment
+        - target: target for deployment
+
+        Returns
+        -------
+        - compiled name: name of compiled module
+        - runtm: runtime for executing the model/graph
+
+        """
+
         path_lib = os.path.join(self.deploy_dir_path, f"lib_{name}.tar")
         compiled_name = self.compile_part(part, input_data, name, target=target)
         # create the remote runtime module
@@ -144,6 +222,16 @@ class Student:
         return compiled_name, runtm
 
     def deploy(self, print_model=False, print_params=False, print_stats=False):
+        """
+        Function for deploying student model onto target.
+
+        Params
+        ------
+        - print_model: whether to print student model
+        - part_params: whether to print parameters
+        - print_stats: whether to print stats
+
+        """
 
         self.student_deploy_model.load_state_dict(torch.load(self.student_model_path, map_location=torch.device('cpu')))
         # Print the model
@@ -183,6 +271,7 @@ class Student:
         fc_shape = [1, list(self.student_deploy_model.before_avg)[1]]
         input_data += [torch.randn(fc_shape)]
 
+        # Get compile name and run time for each student
         students = []
         for i in range(self.num_students):
             compile_name, runtm = self.compile_and_load(name=f"s{i}",
@@ -193,12 +282,13 @@ class Student:
                                                         target=self.deploy_target)
             students += [(compile_name, runtm)]
 
+        # If max pool is true
         if self.student_deploy_model.has_pool:
             pool_compile_name, pool_runtm = self.compile_and_load(name="avg",
                                                                   part=self.student_deploy_model.pool.eval(),
                                                                   input_data=input_data[self.num_students],
                                                                   target='llvm')
-
+        # Fully connected graph compile_name and run time
         fc_compile_name, fc_runtm = self.compile_and_load(name="fc",
                                                           part=self.student_deploy_model.fc.eval(),
                                                           input_data=input_data[-1],
@@ -311,10 +401,14 @@ class Student:
                 f.write(f";{fc_input / cnt * 1000};{fc_run / cnt * 1000};{total_sum / cnt * 1000};;;;;;\n")
 
     def train_model(self):
+        """
+        Function for training the student model.
+        """
         since = time.time()
         best_acc_s = 0.0
         results = []
 
+        # Print current epoch value
         for epoch in range(self.epochs):
             print('Epoch {}/{}'.format(epoch, self.epochs - 1))
             print('-' * 80)
@@ -349,16 +443,20 @@ class Student:
                     # zero the parameter gradients
                     self.optimizer.zero_grad()
 
-                    # forward
+                    # Forward
                     with torch.set_grad_enabled(phase == 'train'):
                         inputs = inputs.to(self.device_student)
                         labels = labels.to(self.device_student)
 
+                        # Get outputs of student model
                         outputs_S, s_filt_out = self.student_model(inputs)
                         _, preds_S = torch.max(outputs_S, 1)
 
+                        # Transferring teacher outputs and last convolutional layer to student device
                         outputs_T = outputs_T.to(self.device_student)
                         t_filt_out = t_filt_out.to(self.device_student)
+
+                        # Get soft target loss from knowledge distillation
                         soft_target_loss = self.distillation(student_scores=outputs_S,
                                                              teacher_scores=outputs_T,
                                                              labels=labels,
@@ -378,6 +476,7 @@ class Student:
 
                         g_t = torch.cat(t_cluster_list, dim=1)
 
+                        # Get activation transfer loss
                         at_loss = [self.actTransfer_loss(x, y) for x, y in zip([s_filt_out], [g_t])]
 
                         actT_Loss2 = self.beta * sum(at_loss)
@@ -432,12 +531,49 @@ class Student:
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 
     def distillation(self, student_scores, teacher_scores, labels, temperature, alpha):
-        p_t = F.softmax(teacher_scores / temperature)
-        p_s = F.log_softmax(student_scores / temperature)
-        h = F.cross_entropy(student_scores, labels)
+        """
+        Function for knowledge distillation from teacher to student.
+
+        Params
+        ------
+        - student_scores: outputs of student model
+        - teacher_scores: output of teacher model
+        - labels: class labels
+        - temperature: temperature for softening probability distributions,
+          making logits smaller and retaining relativeness
+        - alpha: factor to weight the student and distillation loss (weight to student loss function
+          and 1 - alpha to distillation loss function
+
+        Returns
+        -------
+        - knowledge distillation loss function
+        """
+        p_t = F.softmax(teacher_scores / temperature)       # softmax over relaxed teacher logits l_T/ t
+        p_s = F.log_softmax(student_scores / temperature)   # softmax over relaxed student logits l_T/ s
+        h = F.cross_entropy(student_scores, labels)         # cross entropy loss h
+
+        # KD loss function:  alpha * H(p_t, p_s) + (1 - alpha) * H(y, p_s)
+        # from https://arxiv.org/abs/1907.11804
         return F.kl_div(p_s, p_t) * (temperature * temperature * 2. * alpha) + h * (1. - alpha)
 
     def actTransfer_loss(self, x, y, normalize_acts=True):
+        """
+        Function for calculating the normalized or not normalized activation transfer loss.
+
+        Params
+        ------
+        - x: activations of students (based on the arguments from above)
+        - y: activations of teacher (based on the arguments from above)
+        - normalize_acts: whether to normalize activation transfer loss
+
+        Returns
+        -------
+        - normalized or not normalized activation transfer loss
+
+        """
+
+        # Calculate activation transfer loss
+        # if normalize_acts is true, normalize the activation transfer loss. Else, don't.
         if normalize_acts:
             return (F.normalize(x.view(x.size(0), -1)) - F.normalize(y.view(y.size(0), -1))).pow(2).mean()
         else:

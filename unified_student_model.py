@@ -8,7 +8,21 @@ from copy import deepcopy
 class UnifiedStudentModel(nn.Module):
     def __init__(self, num_students=2, filter_cluster_sizes=None, num_classes=10, mode="train", model=None,
                  split_index=None, teacher_filter_shape=Size([1, 1]), final_size=Size([1, 1])):
-        """"Constructor of the class"""
+        """"
+        Constructor for the unified student model class.
+
+        Params
+        ------
+        - num_students: number of students in NoNN
+        - filter_cluster_sizes: size of each cluster
+        - num_classes: total number of classes/labels
+        - mode: what mode the network is in, training, validation, testing
+        - model: unified student model
+        - split_index:
+        - teacher_filter_shape:
+        - final_size:
+
+        """
         super(UnifiedStudentModel, self).__init__()
         self.mode = mode
         self.has_pool = False
@@ -64,14 +78,21 @@ class UnifiedStudentModel(nn.Module):
         else:
             self.has_pool = True
             self.pool = nn.AvgPool2d(self.before_avg[2:][0], stride=1)
-            self.fc = nn.Linear(filters, num_classes)
+            self.fc = nn.Linear(filters, num_classes)   # fc = linear = dense layer = fully connected (FC)
 
     def forward(self, x):
+        """
+        # TODO
+        """
+
         s_out = []
         for i in range(self.num_students):
-            s_out += [self.s_list[i](x)]
+            # s_out += [self.s_list[i](x)]
+            s_out.append(self.s_list[i](x))
 
         layer_out = cat(s_out, dim=1)
+
+        # If has_pool is true, then max pool. Else, only flatten.
         if self.has_pool:
             x = self.pool(layer_out)
             x = x.view(x.size(0), -1)
@@ -79,6 +100,7 @@ class UnifiedStudentModel(nn.Module):
             x = layer_out.view(layer_out.size(0), -1)
         x = self.fc(x)
 
+        # If student mode is train
         if self.mode == "train":
             return x, layer_out
         elif self.mode == "deploy":

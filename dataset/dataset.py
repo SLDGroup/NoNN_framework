@@ -10,7 +10,15 @@ label_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', '
 
 
 def imshow(inp, title=None):
-    """Imshow for Tensor."""
+    """
+    Utility function for plotting images from tensor.
+
+    Params
+    ------
+    - inp: input tensor
+    - title: title of tensor
+    """
+
     inp = inp.numpy().transpose((1, 2, 0))
     mean = np.array([0.485, 0.456, 0.406])
     std = np.array([0.229, 0.224, 0.225])
@@ -24,8 +32,16 @@ def imshow(inp, title=None):
 
 def plot_images(images, cls_true, cls_pred=None):
     """
+    Utility function for plotting images and printing true and predicted classes for the images.
     Adapted from https://github.com/Hvass-Labs/TensorFlow-Tutorials/
+
+    Params
+    ------
+    - images: array of tensors
+    - cls_true: array of indices that correspond to the true class label of an image
+    - cls_pred: array of indices that correspond to the predicted class label of an image
     """
+
     fig, axes = plt.subplots(3, 3)
 
     for i, ax in enumerate(axes.flat):
@@ -53,6 +69,7 @@ def get_train_valid_loader(data_dir, batch_size, augment, random_seed, val_split
     multi-process iterators over the CIFAR-10 dataset. A sample
     9x9 grid of the images can be optionally displayed.
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
+
     Params
     ------
     - data_dir: path directory to the dataset.
@@ -66,6 +83,7 @@ def get_train_valid_loader(data_dir, batch_size, augment, random_seed, val_split
     - show_sample: plot 9x9 sample grid of the dataset.
     - num_workers: number of subprocesses to use when loading the dataset.
     - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to True if using GPU.
+
     Returns
     -------
     - train_loader: training set iterator.
@@ -141,6 +159,7 @@ def get_test_loader(data_dir, batch_size, shuffle=True, num_workers=4, pin_memor
     Utility function for loading and returning a multi-process
     test iterator over the CIFAR-10 dataset.
     If using CUDA, num_workers should be set to 1 and pin_memory to True.
+
     Params
     ------
     - data_dir: path directory to the dataset.
@@ -148,6 +167,7 @@ def get_test_loader(data_dir, batch_size, shuffle=True, num_workers=4, pin_memor
     - shuffle: whether to shuffle the dataset after every epoch.
     - num_workers: number of subprocesses to use when loading the dataset.
     - pin_memory: whether to copy tensors into CUDA pinned memory. Set it to True if using GPU.
+
     Returns
     -------
     - data_loader: test set iterator.
@@ -177,6 +197,14 @@ def get_test_loader(data_dir, batch_size, shuffle=True, num_workers=4, pin_memor
 
 
 def show_some_data(data_loaders):
+    """
+    Utility function for making a grid of a batch of training data.
+
+    Params
+    ------
+    - data_loaders: dictionary of training data, validation data, and testing data iterators
+    """
+
     # Get a batch of training data
     inputs, classes = next(iter(data_loaders['train']))
 
@@ -188,25 +216,27 @@ def show_some_data(data_loaders):
 def prepare_datasets(data_dir, train_val_batch_size, test_batch_size, val_split=0.1, num_workers=4, download_train=True,
                      download_val=True, download_test=True):
     """
-        Utility function for preparing data sets for testing, training, and validation
-        using utility functions: get_train_valid_loader and get_test_loader.
-        Params
-        ------
-        - data_dir: path directory to the dataset.
-        - train_val_batch_size: how many samples per batch to load during training.
-        - test_batch_size: how many samples per batch to load during testing.
-        - val_split: percentage split of the training set used for
-          the validation set. Should be a float in the range [0, 1].
-        - num_workers: number of subprocesses to use when loading the dataset.
-        - download_val: whether validation data should be downloaded when not available in library
-        - download_train: whether training data should be downloaded when not available in library
-        - download_test: whether testing data should be downloaded when not available in library
-        Returns
-        -------
-        - data_loaders: dictionary of training set, validation set, and testing set iterators.
-        - dataset_sizes: dictionary of training set, validation set, and testing set sizes.
-        - len(label_names): number of total classes
-        """
+    Utility function for preparing data sets for testing, training, and validation
+    using utility functions: get_train_valid_loader and get_test_loader.
+
+    Params
+    ------
+    - data_dir: path directory to the dataset.
+    - train_val_batch_size: how many samples per batch to load during training.
+    - test_batch_size: how many samples per batch to load during testing.
+    - val_split: percentage split of the training set used for
+      the validation set. Should be a float in the range [0, 1].
+    - num_workers: number of subprocesses to use when loading the dataset.
+    - download_val: whether validation data should be downloaded when not available in library
+    - download_train: whether training data should be downloaded when not available in library
+    - download_test: whether testing data should be downloaded when not available in library
+
+    Returns
+    -------
+    - data_loaders: dictionary of training set, validation set, and testing set iterators.
+    - dataset_sizes: dictionary of training set, validation set, and testing set sizes.
+    - len(label_names): number of total classes
+    """
 
     # Get training set and validation set iterators using get_train_valid_loader function
     train_loader, train_size, valid_loader, val_split = get_train_valid_loader(data_dir=data_dir,

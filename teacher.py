@@ -10,12 +10,37 @@ from torch import randn
 
 class Teacher:
     """
-        Class for the  teacher network
+    Class for the  teacher network
     """
+
 
     def __init__(self, teacher_configs, base_configs,
                  model=None, loss_function=None, optimizer=None, lr_scheduler=None,
                  dataset=None, print_model=False, print_params=False):
+        """
+        Constructor for teacher network. Loads configurations for the teacher network.
+        Params
+        ------
+        - teacher_configs: teacher configurations
+            - gpu_id: graphics processing unit ID
+            - epochs: total number of epochs
+            - parallel: whether parallel processing is used
+            - resume: whether to resume training on an existing/previously trained model
+            - mode: what mode the teacher is in: train, partition, or train_and_partition
+            - log_file: csv log file for teacher model
+        - base_configs: general NoNN configurations
+            - num_students: number of students
+            - activation_network_path: path directory to the filter activation network
+            - teacher_model_path: path directory to the teacher model
+            - num_classes: number of total classes
+        - model: teacher model
+        - loss_function: function to measure how far the prediction is from the true value
+        - optimizer: function to optimize the loss function (minimize loss)
+        - lr_scheduler: learning rate scheduler for scheduling the learning rate during epochs
+        - dataset: training, validation, and testing data set
+        - print_model: whether to print the teacher model
+        - print_params: whether to print the parameters
+       """
 
         # Load base configurations
         self.model_save_name = base_configs["teacher_model_path"].split('/')[-1]  # wrn_40_4.pt7
@@ -67,7 +92,12 @@ class Teacher:
         print("Loaded configs for teacher")
 
     def execute(self):
+        """
+        Function for executing the teacher network based on the
+        teacher's mode: partition, train_and_partition, or train.
+        """
         # Handle Filter Activation Network
+        # Partition mode
         if self.mode == "partition":
             self.create_activation_network = True
             self.partition_activation_network = True
@@ -76,6 +106,7 @@ class Teacher:
             self.model.load_state_dict(torch.load(self.model_path))
             self.partition_model()
 
+        # Train and Partition mode
         elif self.mode == "train_and_partition":
             # Training part
             # Load or not the model from file
@@ -83,7 +114,6 @@ class Teacher:
                 print(f"Loading model from the file at {self.model_path}")
                 self.model.load_state_dict(torch.load(self.model_path))
             self.train_model()
-
             # Partitioning part
             self.create_activation_network = True
             self.partition_activation_network = True
@@ -92,6 +122,7 @@ class Teacher:
             self.model.load_state_dict(torch.load(self.model_path))
             self.partition_model()
 
+        # Train mode
         elif self.mode == "train":
             # Load or not the model from file
             if self.resume:
@@ -100,6 +131,9 @@ class Teacher:
             self.train_model()
 
     def train_model(self):
+        """
+        Function for training the teacher network.
+        """
         since = time.time()
         best_acc = -1.0
         results = []
@@ -109,10 +143,13 @@ class Teacher:
             # Each epoch has a training and validation phase
             phase_list = ['train', 'val', 'test']
 
+            # Print learning rate at every epoch
             print('Epoch {}/{} learning_rate={}'.format(epoch, self.epochs - 1, [param_group["lr"] for param_group in
                                                                                  self.optimizer.param_groups]))
             print('-' * 80)
             lists = [epoch + 1]
+
+            # Iterate through each phase: training, validation, and testing
             for phase in phase_list:
                 if phase == 'train':
                     self.model.train()  # Set model to training mode
@@ -123,35 +160,37 @@ class Teacher:
                 running_corrects = 0
 
                 # Iterate over data.
-                for inputs, labels in tqdm(self.data_loaders[phase]):
-                    inputs = inputs.to(self.device)
+                for images, labels in tqdm(self.data_loaders[phase]):
+                    images = images.to(self.device)
                     labels = labels.to(self.device)
 
-                    # zero the parameter gradients
+                    # Zero the parameter gradients
                     self.optimizer.zero_grad()
 
-                    # forward
+                    # Forward
                     with torch.set_grad_enabled(phase == 'train' or phase == 'val'):
-                        outputs, _ = self.model(inputs)
+                        outputs, _ = self.model(images)
                         _, preds = torch.max(outputs, 1)
                         loss = self.loss_function(outputs, labels)
 
-                        # backward + optimize only if in training phase
+                        # Backward + optimize only if in training phase
                         if phase == 'train':
                             loss.backward()
                             self.optimizer.step()
 
-                    # statistics
-                    running_loss += loss.item() * inputs.size(0)
+                    # Statistics
+                    running_loss += loss.item() * images.size(0)
                     running_corrects += torch.sum(preds == labels.data)
 
                 epoch_loss = running_loss / self.dataset_sizes[phase]
                 epoch_acc = float(running_corrects) / self.dataset_sizes[phase]
 
+                # Print statistics: phase, epoch loss, and epoch accuracy
                 print('{} Loss: {:.4f} Acc: {:.2f}'.format(phase, epoch_loss, epoch_acc * 100))
                 lists += [phase, epoch_loss, epoch_acc]
 
-                # deep copy the model
+                # Update "best_model" if current epoch accuracy is greater than best model accuracy
+                # Deep copy the new best_model
                 if phase == 'test' and epoch_acc > best_acc:
                     best_acc = epoch_acc
                     if self.parallel:
@@ -173,6 +212,7 @@ class Teacher:
             #     else:
             #         torch.save(self.model.state_dict(), os.path.join(self.model_save_path, self.model_save_name))
 
+        # Print training results
         with open(f"train/{self.log_file}", "w") as f:
             f.write(
                 "Epoch;Training loss;Training accuracy;Validation loss;Validation accuracy;Test loss;Test accuracy;\n")
@@ -184,31 +224,39 @@ class Teacher:
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
 
     def partition_model(self):
+        """
+        Function for partitioning the teacher network.
+        """
+
         print("Partitioning filter activation network...")
-        self.model.eval()  # Set model to evaluate mode
+
+        # Set model to evaluate mode
+        self.model.eval()
+
         with torch.set_grad_enabled(True):
             y = randn(128, 3, 32, 32).to(torch.device('cpu'))
-            another = copy.deepcopy(self.model)
+            another = copy.deepcopy(self.model) # TODO: rename "another" with a better name (not sure whats happening here)
             another.to(torch.device('cpu'))
             _, final_conv = another.forward(y)
 
+        # Get activation network
         act_net = ActivationNetwork(num_classes=self.num_classes,
                                     num_students=self.num_students,
                                     c_final_conv=final_conv.shape[1],
                                     percentile_value=99,
                                     top_k_creation=50)
 
-        # Iterate over data.
-        for inputs, labels in tqdm(self.data_loaders['val']):
-            inputs = inputs.to(self.device)
+        # Iterate over data
+        for images, labels in tqdm(self.data_loaders['val']):
+            images = images.to(self.device)
             labels = labels.to(self.device)
 
-            # zero the parameter gradients
+            # Zero the parameter gradients
             self.optimizer.zero_grad()
 
-            # forward
+            # Forward
             with torch.set_grad_enabled(True):
-                outputs, act_net.interm_out_gr = self.model(inputs)
+                outputs, act_net.interm_out_gr = self.model(images)
                 _, preds = torch.max(outputs, 1)
 
                 if self.create_activation_network:
