@@ -13,7 +13,7 @@ class ActivationNetwork():
         - num_classes: total number of classes
         - num_students: total number of students
         - top_k_creation: number of top filters to look at
-        - percentile_value: # TODO: forgot what this is
+        - percentile_value:
         - c_final_conv: final convolution constant
         """
 

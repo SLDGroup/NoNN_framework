@@ -42,7 +42,7 @@ class Teacher:
         - print_params: whether to print the parameters
        """
 
-        # Load base configurations
+        # Load the base configurations
         self.model_save_name = base_configs["teacher_model_path"].split('/')[-1]  # wrn_40_4.pt7
         self.model_save_path = base_configs["teacher_model_path"][:-len(self.model_save_name)]  # models/teacher/
         self.model_path = base_configs["teacher_model_path"]  # models/teacher/wrn_40_4.pt7

@@ -84,6 +84,7 @@ class NoNN:
         else:
             self.t_loss_function = loss
 
+        # Optimizer for learning rate scheduler
         if optimizer is None:
             optimizer_configs = self.teacher_configs["optim_config"]
             self.t_optimizer = optim.SGD(self.t_model.parameters(),
@@ -93,7 +94,7 @@ class NoNN:
         else:
             self.t_optimizer = optimizer
 
-        # SGD (stochastic gradient descent)
+        # SGD (stochastic gradient descent) for the learning rate scheduler
         if scheduler is None:
             scheduler_configs = self.teacher_configs["lr_scheduler"]
             self.t_exp_lr_scheduler = lr_scheduler.StepLR(optimizer=self.t_optimizer,
@@ -124,7 +125,7 @@ class NoNN:
 
         Returns
         -------
-        -
+        - unified student model
         """
 
         num_students = self.base_configs["num_students"]

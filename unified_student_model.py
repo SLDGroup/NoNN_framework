@@ -18,9 +18,9 @@ class UnifiedStudentModel(nn.Module):
         - num_classes: total number of classes/labels
         - mode: what mode the network is in, training, validation, testing
         - model: unified student model
-        - split_index:
-        - teacher_filter_shape:
-        - final_size:
+        - split_index: where to split the architecture
+        - teacher_filter_shape: shape of teacher's last layer
+        - final_size: final size of student layer
 
         """
         super(UnifiedStudentModel, self).__init__()

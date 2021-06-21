@@ -36,7 +36,7 @@ class Student:
               and (1 - alpha) to distillation loss function
             - temperature: temperature for softening probability distributions,
               making logits smaller and retaining relativeness
-            - beta:
+            - beta: hyperparameter for Activation Loss
             - mode: mode of NoNN
             - log_file: csv log file for teacher model
             - inference_log_file: csv log file for inference

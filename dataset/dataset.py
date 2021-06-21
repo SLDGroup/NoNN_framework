@@ -16,7 +16,7 @@ def imshow(inp, title=None):
     Params
     ------
     - inp: input tensor
-    - title: title of tensor
+    - title: title of the tensor
     """
 
     inp = inp.numpy().transpose((1, 2, 0))
