@@ -78,7 +78,6 @@ class ActivationNetwork():
         # Gives 4 clusters total for 0.086 filter net threshold (largest community has 181 filters)
         gamma = 0.7
 
-        # TODO: comm = community = partition = cluster ; change naming convention
         filter2comm = co.best_partition(self.filter_network, resolution=gamma)  # partitioning the undirected graph with high modularity
         comm2filter = {}
         comm2num_filters = {}

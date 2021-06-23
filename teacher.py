@@ -235,7 +235,7 @@ class Teacher:
 
         with torch.set_grad_enabled(True):
             y = randn(128, 3, 32, 32).to(torch.device('cpu'))
-            another = copy.deepcopy(self.model) # TODO: rename "another" with a better name (not sure whats happening here)
+            another = copy.deepcopy(self.model)
             another.to(torch.device('cpu'))
             _, final_conv = another.forward(y)
 

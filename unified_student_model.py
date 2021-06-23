@@ -82,14 +82,25 @@ class UnifiedStudentModel(nn.Module):
 
     def forward(self, x):
         """
-        # TODO
+        Function for flattening the unified student model and forming a fully connected layer
+
+        Params
+        ------
+        - x: randomly generated tensor
+
+        Returns
+        -------
+        - x: fully connected layer
+        - layer_out: last convolutional layer
         """
 
+        # Get list of students
         s_out = []
         for i in range(self.num_students):
             # s_out += [self.s_list[i](x)]
             s_out.append(self.s_list[i](x))
 
+        # One dimension of all student partitions
         layer_out = cat(s_out, dim=1)
 
         # If has_pool is true, then max pool. Else, only flatten.

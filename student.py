@@ -158,8 +158,10 @@ class Student:
         - input_name: returns name of compiled module
         """
 
+        # Create an executable model
         scripted_model = jit.trace(model_part, input_data).eval()
 
+        # Check target
         tvm_target = None
         if target == 'llvm':
             tvm_target = tvm.target.Target(target, host=target)
@@ -176,7 +178,7 @@ class Student:
         with tvm.transform.PassContext(opt_level=3):
             lib = relay.build(mod, target=tvm_target, params=params)
 
-
+        # Get library path to student deployment files by student name
         path_lib = os.path.join(self.deploy_dir_path, f"lib_{name}.tar")
         if not os.path.exists(self.deploy_dir_path):
             print("Create Deployment Dir")
